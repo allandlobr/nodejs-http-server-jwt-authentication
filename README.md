@@ -1,10 +1,10 @@
-In this project, i try to use only built-in node.js modules. The reason why i have started coding this basic server is only to understand node.js works and what happens under the hood when using third-party libraries/frameworks.
+In this project, i try to use only built-in node.js modules. The reason why i have started coding this basic server is only to understand how node.js works and what happens under the hood when using third-party libraries/frameworks.
 
-The server consist in a simple HTTP server with 5 routes: /login, /logout, /, /admin and /profile. The /admin and /profile are protected routes, to access it, the user must have the proper role.
+The project consists in a simple HTTP server with 5 routes: /login, /logout, /, /admin and /profile. The /admin and /profile are protected routes, to access them, the user must have the proper role.
 
-To find out if an user exist when performing login and which role it has, a quick check is made in the users table previously created on Postgres.
+To find out if an user exists when performing login and which role it has, a quick check is made in the users table previously created on Postgres.
 
-When the user is logged, the username and role is sent back into a JWT using cookies.
+When the user is logged in, the username and role is sent back into a JWT using cookies.
 
 An access and refresh token are created. The access token acessible on client, and refresh token set as HttpOnly.
 
