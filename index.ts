@@ -1,86 +1,226 @@
 import * as http from "http";
 import * as fs from "fs";
-import { Client } from "pg";
 import * as crypto from "crypto";
+import { Client } from "pg";
+import { createJwt, decodeJwt, verifyJwt } from "./utils/jwt";
 
-function createJwt(username: string, role: string, secret: string) {
-  const header = JSON.stringify({
-    alg: "HS256",
-    typ: "JWT",
-  });
+const userCredentials = {
+  username: "user",
+  password: "user123",
+  role: "user",
+};
 
-  const payload = JSON.stringify({
-    username,
-    role,
-  });
-
-  const base64Header = Buffer.from(header).toString("base64").replace(/=/g, "");
-  const base64Payload = Buffer.from(payload)
-    .toString("base64")
-    .replace(/=/g, "");
-
-  const data = base64Header + "." + base64Payload;
-
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(data)
-    .digest("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-
-  const token = data + "." + signature;
-  return token;
-}
+// const userCredentials = {
+//   username: "admin",
+//   password: "admin123",
+//   role: "admin",
+// };
 
 function onLogin(req: http.IncomingMessage, res: http.ServerResponse) {
-  const body: any[] = [];
+  const reqBody: Uint8Array[] = [];
   req
-    .on("data", (chunk) => body.push(chunk))
+    .on("data", (chunk: Uint8Array) => reqBody.push(chunk))
     .on("end", () => {
       const formData = Object.fromEntries(
-        new URLSearchParams(Buffer.concat(body).toString()).entries()
+        new URLSearchParams(Buffer.concat(reqBody).toString()).entries()
       );
 
       const { user, pass } = formData;
 
-      client
-        .query(`SELECT * FROM users WHERE username = '${user}'`)
-        .then((dbRes) => {
-          if (dbRes.rows.length > 0) {
-            const dbPass = dbRes.rows[0].password;
-            const md5Pass = crypto.createHash("md5").update(pass).digest("hex");
-            if (dbPass === md5Pass) {
-              console.log("Senha correta!");
-              const access = createJwt(
-                dbRes.rows[0].username,
-                dbRes.rows[0].role,
-                "access"
-              );
-              const refresh = createJwt(
-                dbRes.rows[0].username,
-                dbRes.rows[0].role,
-                "refresh"
-              );
-              const headers = [
-                `access=${access}; Max-Age=240`,
-                `refresh=${refresh}; Max-Age=240; HttpOnly`,
-              ];
+      if (
+        user === userCredentials.username &&
+        pass === userCredentials.password
+      ) {
+        const access = createJwt(
+          userCredentials.username,
+          userCredentials.role,
+          "access"
+        );
+        const refresh = createJwt(
+          userCredentials.username,
+          userCredentials.role,
+          "refresh"
+        );
+        const headers = [
+          `access=${access}; Max-Age=120`,
+          `refresh=${refresh}; Max-Age=900; HttpOnly`,
+        ];
 
-              client
-                .query(
-                  `INSERT INTO sessions VALUES (
-                          '${refresh}', '${dbRes.rows[0].username}', '${dbRes.rows[0].role}'
-                        )`
-                )
-                .then((res) => console.log("Sessão criada!"));
-
-              res.setHeader("Set-Cookie", headers);
-              res.end(JSON.stringify(formData));
-            } else console.log("Senha incorreta!");
-          }
+        res.writeHead(302, {
+          location: "/",
+          "Set-Cookie": headers,
         });
+        res.end();
+      }
+
+      res.writeHead(302, {
+        location: "/login",
+      });
+      res.end();
     });
+}
+
+function onLogout(req: http.IncomingMessage, res: http.ServerResponse) {
+  const headers = ["access=; Max-Age=0", "refresh=; Max-Age=0; HttpOnly"];
+  res.writeHead(302, {
+    location: "/",
+    "Set-Cookie": headers,
+  });
+  res.end();
+}
+
+function onProfile(req: http.IncomingMessage, res: http.ServerResponse) {
+  const cookie = req.headers.cookie;
+
+  if (!cookie) {
+    res.writeHead(302, {
+      location: "/not-authorized",
+    });
+    res.end();
+  }
+
+  if (cookie) {
+    const cookies = cookie.replace(" ", "").split(";");
+    const parsedCookies: Record<string, string> = {};
+    for (const cookie of cookies) {
+      const arr = cookie.split("=");
+      parsedCookies[arr[0]] = arr[1];
+    }
+
+    if (parsedCookies.access) {
+      const isJwtValid = verifyJwt(parsedCookies.access, "access");
+      const decodedToken = decodeJwt(parsedCookies.access, "access");
+
+      if (
+        isJwtValid &&
+        (decodedToken.role === "admin" || decodedToken.role === "user")
+      ) {
+        const streamProfile = fs.createReadStream(
+          `${__dirname}/pages/profile.html`
+        );
+        streamProfile.pipe(res);
+      }
+
+      if (!isJwtValid) {
+        const headers = ["access=; Max-Age=1", "refresh=; Max-Age=1; HttpOnly"];
+        res.writeHead(302, {
+          location: "/not-authorized",
+          "Set-Cookie": headers,
+        });
+        res.end();
+      }
+    }
+    if (!parsedCookies.access) {
+      const isJwtValid = verifyJwt(parsedCookies.refresh, "refresh");
+
+      if (isJwtValid) {
+        const decodedToken = decodeJwt(parsedCookies.refresh, "refresh");
+
+        const access = createJwt(
+          decodedToken.username,
+          decodedToken.role,
+          "access"
+        );
+
+        const headers = [`access=${access}; Max-Age=120`];
+
+        res.setHeader("Set-Cookie", headers);
+
+        const streamProfile = fs.createReadStream(
+          `${__dirname}/pages/profile.html`
+        );
+        streamProfile.pipe(res);
+      }
+
+      if (!isJwtValid) {
+        const headers = ["access=; Max-Age=0", "refresh=; Max-Age=0; HttpOnly"];
+        res.writeHead(302, {
+          location: "/not-authorized",
+          "Set-Cookie": headers,
+        });
+        res.end();
+      }
+    }
+  }
+}
+
+function onAdmin(req: http.IncomingMessage, res: http.ServerResponse) {
+  const cookie = req.headers.cookie;
+
+  if (!cookie) {
+    res.writeHead(302, {
+      location: "/not-authorized",
+    });
+    res.end();
+  }
+
+  if (cookie) {
+    const cookies = cookie.replace(" ", "").split(";");
+    const parsedCookies: Record<string, string> = {};
+    for (const cookie of cookies) {
+      const arr = cookie.split("=");
+      parsedCookies[arr[0]] = arr[1];
+    }
+
+    if (parsedCookies.access) {
+      const isJwtValid = verifyJwt(parsedCookies.access, "access");
+      const decodedToken = decodeJwt(parsedCookies.access, "access");
+
+      if (isJwtValid && decodedToken.role === "admin") {
+        const streamProfile = fs.createReadStream(
+          `${__dirname}/pages/admin.html`
+        );
+        streamProfile.pipe(res);
+      }
+
+      if (!isJwtValid) {
+        const headers = ["access=; Max-Age=1", "refresh=; Max-Age=1; HttpOnly"];
+        res.writeHead(302, {
+          location: "/not-authorized",
+          "Set-Cookie": headers,
+        });
+        res.end();
+      }
+
+      if (!(decodedToken.role === "admin")) {
+        res.writeHead(302, {
+          location: "/not-authorized",
+        });
+        res.end();
+      }
+    }
+    if (!parsedCookies.access) {
+      const isJwtValid = verifyJwt(parsedCookies.refresh, "refresh");
+
+      if (isJwtValid) {
+        const decodedToken = decodeJwt(parsedCookies.refresh, "refresh");
+
+        const access = createJwt(
+          decodedToken.username,
+          decodedToken.role,
+          "access"
+        );
+
+        const headers = [`access=${access}; Max-Age=120`];
+
+        res.setHeader("Set-Cookie", headers);
+
+        const streamProfile = fs.createReadStream(
+          `${__dirname}/pages/admin.html`
+        );
+        streamProfile.pipe(res);
+      }
+
+      if (!isJwtValid) {
+        const headers = ["access=; Max-Age=1", "refresh=; Max-Age=1; HttpOnly"];
+        res.writeHead(302, {
+          location: "/not-authorized",
+          "Set-Cookie": headers,
+        });
+        res.end();
+      }
+    }
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -99,23 +239,29 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET") {
     switch (route) {
       case "/":
-        const streamHome = fs.createReadStream(`${__dirname}/home.html`);
+        const streamHome = fs.createReadStream(`${__dirname}/pages/home.html`);
         streamHome.pipe(res);
         break;
       case "/profile":
-        const streamProfile = fs.createReadStream(`${__dirname}/profile.html`);
-        streamProfile.pipe(res);
+        onProfile(req, res);
         break;
       case "/admin":
-        const { cookie } = req.headers;
-        const cookies = cookie?.replace(" ", "").split(";");
-        
-        const streamAdmin = fs.createReadStream(`${__dirname}/admin.html`);
-        streamAdmin.pipe(res);
+        onAdmin(req, res);
+        break;
+      case "/logout":
+        onLogout(req, res);
         break;
       case "/login":
-        const streamLogin = fs.createReadStream(`${__dirname}/login.html`);
+        const streamLogin = fs.createReadStream(
+          `${__dirname}/pages/login.html`
+        );
         streamLogin.pipe(res);
+        break;
+      case "/not-authorized":
+        const streamNotAuthorized = fs.createReadStream(
+          `${__dirname}/pages/not-authorized.html`
+        );
+        streamNotAuthorized.pipe(res);
         break;
       default:
         res.end("Route not found!");
@@ -123,25 +269,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const dbInfo = {
-  user: "postgres",
-  host: "localhost",
-  database: "postgres",
-  password: "password",
-  port: 5432,
-};
-
-const client = new Client(dbInfo);
-client.connect();
-
 server.listen(8000, () => {
   console.log("Server is listening on port 8000");
 });
 
 server.on("close", () => {
-  client.end((err) => {
-    console.log("DB client disconnected");
-    if (err) console.log(err);
-  });
   console.log("Server encerrado.");
 });
