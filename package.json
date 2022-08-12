@@ -1,10 +1,10 @@
 {
-  "name": "nodejs-role-authentication-server",
+  "name": "nodejs-jwt-authentication-server",
   "version": "1.0.0",
-  "description": "A nodejs role based authentication server.",
+  "description": "A nodejs server using jwt authentication.",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon ts-node index.ts",
+    "start": "nodemon index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "allandlobr",
