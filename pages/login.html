@@ -6,14 +6,26 @@
     <title>Node.JS</title>
   </head>
   <body>
-    <h1>Login</h1>
-    <div style="display: flex; gap: 1rem;">
-      <form method="POST" action="/login">
-        <input type="text" name="user" id="username" />
-        <input type="password" name="pass" id="password" />
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      "
+    >
+      <h1>Login</h1>
+      <form
+        method="POST"
+        action="/login"
+        style="display: flex; flex-direction: column; gap: 1rem"
+      >
+        <input type="text" name="user" id="username" placeholder="Usuário" />
+        <input type="password" name="pass" id="password" placeholder="Senha" />
         <button type="submit">Logar</button>
       </form>
-      <a href="/"><button>Voltar</button></a>
+
+      <a style="margin-top: 1rem;" href="/"><button>Voltar</button></a>
     </div>
   </body>
 </html>

@@ -6,13 +6,22 @@
     <title>Node.JS</title>
   </head>
   <body>
-    <div>
-      <h1>Essa é a Homepage!</h1>
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+      "
+    >
+      <h1>Homepage!</h1>
       <p>Aqui todos podem visitar!</p>
-      <a href="/login"><button>Login</button></a>
-      <a href="/logout"><button>Logout</button></a>
-      <a href="/admin"><button>Admin</button></a>
-      <a href="/profile"><button>Profile</button></a>
+      <div style="display: flex; gap: 1rem;">
+        <a href="/login"><button>Login</button></a>
+        <a href="/logout"><button>Logout</button></a>
+        <a href="/admin"><button>Admin</button></a>
+        <a href="/profile"><button>Profile</button></a>
+      </div>
     </div>
   </body>
 </html>
